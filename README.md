@@ -1,0 +1,3 @@
+## Marshmallow Run Game
+
+ "Marshmallow Run" is an interactive FPGA-based game implemented using Verilog. The goal of the game is to help "Marshy The Marshmallow" run from impending doom by getting him to promptly jump over unrelenting bursts of lava and finally getting him to safe ground. The player collects points, which are shown on a hex display, by successfully making Marshy jump across varying heights of lava and carefully landing on narrow as well as wide edges without roasting. Additionally, players have to coordinate their reactions with the increasing speed and challenge of the game with each new level, making "Marshmallow Run" highly addictive (in a good way).

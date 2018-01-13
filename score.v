@@ -1,0 +1,114 @@
+`timescale 1ns / 1ns // `timescale time_unit/time_precision
+
+module score(
+	input clock,
+	input resetn,
+	input [11:0] score,
+	input [2:0] level,
+	output [6:0] out0,
+	output [6:0] out1,
+	output [6:0] out2,
+	output [6:0] out3,
+	output [6:0] out4,
+	output [6:0] out5
+	// output [11:0] high_score
+	// output [2:0] high_level
+	);
+	
+	/*
+	HIGH SCORES
+	in project, resetn = KEY[0] || KEY[2]
+	and also, full_reset = KEY[0]
+	but for score, only .resetn(full_reset)
+	also need to shorten score to two digits, which is not
+	much work, just ignore the most significant 4 bits
+	
+	
+	always @ (posedge clock) begin
+		if (!resetn) begin
+			high_score <= 0;
+		end else if (score > high_score) begin
+			high_score <= score;
+		end
+	end
+	
+	always @ (posedge clock) begin
+		if (!resetn) begin
+			high_level <= 0;
+		end else if (level > high_level) begin
+			high_level <= level;
+		end
+	end
+	*/
+	
+	/*
+	DECIMAL SCORE
+	
+	*/
+	
+	/*
+	LETTERS FOR LEVELS
+	in order to distinguish levels from
+	letters, use the letters instead
+	
+	this is easy but of course this requires
+	having implemented the decimal scores
+	*/
+	
+	hex_decoder H0(
+        .hex_digit(score[3:0]), 
+        .segments(out0)
+        );
+		
+	hex_decoder H1(
+        .hex_digit(score[7:4]), 
+        .segments(out1)
+        );
+	
+	hex_decoder H2(
+        .hex_digit(score[11:8]), 
+        .segments(out2)
+        );
+	
+	hex_decoder H3(
+        .hex_digit(4'h0), 
+        .segments(out3)
+        );
+		
+	hex_decoder H4(
+        .hex_digit(4'b0 + level), 
+        .segments(out4)
+        );
+		
+	hex_decoder H5(
+        .hex_digit(4'h0), 
+        .segments(out5)
+        );
+	
+endmodule
+
+module hex_decoder(hex_digit, segments);
+    input [3:0] hex_digit;
+    output reg [6:0] segments;
+   
+    always @(*)
+        case (hex_digit)
+            4'h0: segments = 7'b100_0000;
+            4'h1: segments = 7'b111_1001;
+            4'h2: segments = 7'b010_0100;
+            4'h3: segments = 7'b011_0000;
+            4'h4: segments = 7'b001_1001;
+            4'h5: segments = 7'b001_0010;
+            4'h6: segments = 7'b000_0010;
+            4'h7: segments = 7'b111_1000;
+            4'h8: segments = 7'b000_0000;
+            4'h9: segments = 7'b001_1000;
+            4'hA: segments = 7'b000_1000;
+            4'hB: segments = 7'b000_0011;
+            4'hC: segments = 7'b100_0110;
+            4'hD: segments = 7'b010_0001;
+            4'hE: segments = 7'b000_0110;
+            4'hF: segments = 7'b000_1110;   
+            default: segments = 7'h7f;
+        endcase
+endmodule

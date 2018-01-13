@@ -1,0 +1,452 @@
+`timescale 1ns / 1ns // `timescale time_unit/time_precision
+
+`define	width 5'b10100 // 5'd20 pixels wide
+`define	height 5'd30 // 5'd30 pixels tall
+`define	x_resting 6'd40 // 6'd40 pixels from the left of the screen
+`define	y_resting 8'b10000010 // 8'd130 pixels from the top of the screen
+`define	leading_edge (`x_resting + width - 1'b1)
+	
+`define	screen_width 9'b101101000 //360px across
+`define	ground_level 8'd240 - 8'd80 //80px from bottom of screen
+`define	grass_level 8'd240 - 8'd60	//20px from ground origin
+`define	lava_level 8'd240 - 8'd40 //40px from ground origin
+	
+	
+module sprite4(
+	input clock,
+	input resetn,
+	input move,
+	input jump,
+	input [19:0] ground_under_sprite,
+	input [6:0] ground_under_feet,
+	input [46:0] jumped_ground,
+	input rightmost_ground,
+	input erase,
+	output [8:0] x,
+	output [7:0] y,
+	output [2:0] colour,
+	output kill,
+	output [7:0] y0_out,
+	output [11:0] score
+	);
+	
+	wire [7:0] y0;
+	wire [6:0] t_out;
+	wire [2:0] current_state;
+	
+	assign y0_out = y0;
+	
+	// control
+	sprite_control c0(
+		.clock(clock),
+		.resetn(resetn),
+		.jump(jump),
+		.move(move),
+		.ground_under_feet(ground_under_feet),
+		.jumped_ground(jumped_ground),
+		.rightmost_ground(rightmost_ground),
+		.y0(y0),
+		.kill(kill),
+		.t_out(t_out),
+		.current_state_out(current_state),
+		.score(score)
+		);
+		
+	wire [7:0] y_add;
+	
+	// datapath
+	sprite_datapath d0(
+		.clock(clock),
+		.resetn(resetn),
+		.erase(erase),
+		.move(move),
+		.ground_under_sprite(ground_under_sprite),
+		.y0(y0),
+		.x(x),
+		.y(y),
+		.colour(colour),
+		.y_add_out(y_add)
+		);
+	
+endmodule
+
+module sprite_control(
+	input clock,
+	input resetn,
+	input jump,
+	input move,
+	input [6:0] ground_under_feet,
+	input [46:0] jumped_ground,
+	input rightmost_ground,
+	output reg [7:0] y0,
+	output kill,
+	output [6:0] t_out,
+	output [2:0] current_state_out,
+	output reg [11:0] score
+	);
+	
+	reg [2:0] current_state, next_state;
+	
+	localparam
+		RUNNING = 3'd0,
+		JUMPING = 3'd1,
+		FALLING = 3'd2;
+		
+	reg [6:0] t;
+	always @ (posedge clock)
+	begin
+		if (resetn == 1'b0) begin
+			t <= 1'b0;
+		end else if (next_state != current_state) begin
+			t <= 1'b0;
+		end else if (move) begin
+			t <= t + 1'b1;
+		end
+	end
+	
+	assign current_state_out = current_state;
+	
+	assign t_out = t;
+		
+	// signal to stop jumping
+	wire stop_jumping = t >= 25 ? 1'b1 : 1'b0;
+	
+	// signal to start falling
+	wire fall = & ground_under_feet ? 1'b1 : 1'b0;
+	
+	// signal to stop falling
+	wire stop_falling = (y0 == `y_resting && ~&(ground_under_feet)) ? 1'b1 : 1'b0;
+	
+	// signal that front collides with ground
+	assign kill = (y0 > `y_resting && rightmost_ground == 0) || y0 > 9'd200 ? 1'b1 : 1'b0;
+	
+		
+	always@(*)
+    begin: state_table 
+            case (current_state)
+			RUNNING:
+				if (jump) begin
+					next_state = JUMPING;
+				end else if (fall) begin
+					next_state = FALLING;
+				end else
+					next_state = RUNNING;
+			JUMPING:	next_state = stop_jumping ? FALLING : JUMPING;
+			FALLING:	next_state = stop_falling ? RUNNING : FALLING;	
+            default:     next_state = RUNNING;
+        endcase
+    end
+	
+	localparam
+	ZERO = 3'd0,
+	ONE = 3'd1,
+	TWO = 3'd2,
+	THREE = 3'd3,
+	FOUR = 3'd4,
+	FIVE = 3'd5,
+	SIX = 3'd6;
+	
+	wire [2:0] dy_list [0:25];
+	assign dy_list[0] = ZERO;
+	assign dy_list[1] = ZERO;
+	assign dy_list[2] = ONE;
+	assign dy_list[3] = ONE;
+	assign dy_list[4] = ONE;
+	assign dy_list[5] = ONE;
+	assign dy_list[6] = TWO;
+	assign dy_list[7] = TWO;
+	assign dy_list[8] = TWO;
+	assign dy_list[9] = TWO;
+	assign dy_list[10] = TWO;
+	assign dy_list[11] = THREE;
+	assign dy_list[12] = THREE;
+	assign dy_list[13] = THREE;
+	assign dy_list[14] = FOUR;
+	assign dy_list[15] = FOUR;
+	assign dy_list[16] = FOUR;
+	assign dy_list[17] = FOUR;
+	assign dy_list[18] = FOUR;
+	assign dy_list[19] = FIVE;
+	assign dy_list[20] = FIVE;
+	assign dy_list[21] = FIVE;
+	assign dy_list[22] = FIVE;
+	assign dy_list[23] = SIX;
+	assign dy_list[24] = SIX;
+	assign dy_list[25] = SIX;
+	
+	reg [2:0] dy;
+	always @(*)
+	begin
+		case(current_state)
+			RUNNING: dy = ZERO;
+			JUMPING: dy = dy_list[25 - t];
+			FALLING: 
+				if(t <= 24) begin
+					dy = dy_list[t]; 
+				end else
+					dy = SIX;
+			default: dy = ZERO;
+		endcase
+	end
+	
+	always @(posedge clock)
+	begin
+		if (resetn == 1'b0)
+			y0 <= `y_resting;
+		else if(move) begin
+			if (next_state == RUNNING)
+				y0 <= `y_resting;
+			if (next_state == FALLING)
+				y0 <= y0 + dy;
+			else if (next_state == JUMPING)
+				y0 <= y0 - dy;
+		end
+	end
+	
+		// current_state registers
+    always@(posedge clock)
+    begin: state_FFs
+        if(!resetn)
+            current_state <= RUNNING;
+        else
+            current_state <= next_state;
+    end // state_FFS
+	
+	// scoring
+	always @(posedge clock)
+	begin
+		if (resetn == 1'b0) begin
+			score <= 1'b0;
+		end else if(current_state == FALLING && next_state == RUNNING && (| jumped_ground)) begin
+			score <= score + 1'b1;
+		end
+	end
+
+endmodule
+
+
+module sprite_datapath(
+	input clock,			// CLOCK_50
+	input resetn,			// synchronous low reset
+	input erase,			// signal from master fsm to erase
+	input move,
+	input [19:0] ground_under_sprite,
+	input [7:0] y0,			// change to y
+	output reg [8:0] x,			// x output
+	output reg [7:0] y,			// y output
+	output reg [2:0] colour,		// colour output
+	output [7:0] y_add_out
+	);
+	
+	
+	// colours
+	localparam
+		green = 3'b010,
+		white = 3'b111,
+		black = 3'b000,
+		red = 3'b100,
+		cyan = 3'b011;
+		
+	// frame counter
+	reg [5:0] frames;
+	always @(posedge clock)
+	begin
+		if (!resetn) begin
+			frames <= 1'b0;
+		end else if (move && y0 == `y_resting) begin
+			frames <= frames + 1'b1;
+		end else if (frames == 7'd60) begin
+			frames <= 1'b0;
+		end
+	end
+	
+	// toggle between run animations every 30 frames
+	wire run_toggle = frames < 30 ? 1'b0 : 1'b1;
+	
+	// counter
+	reg[12:0] q;
+	wire[12:0] max;
+	assign max = {5'd20, 8'd240}; // 20 concatenated with 240
+	always @(posedge clock)
+	begin
+		if (resetn == 1'b0)
+			q <= 1'b0;
+		else if (q[7:0] == 8'd240) begin // if y count reaches 240
+			q[7:0] <= 1'b0;
+			q[12:8] <= q[12:8] + 1'b1;
+		end
+		else if (q[12:8] == 5'd20) begin
+			q <= 1'b0;
+			end
+		else
+			q <= q + 1'b1;
+	end
+	wire[4:0] x_add;
+	wire[7:0] y_add;
+	assign x_add = q[12:8];
+	assign y_add = q[7:0];
+	
+    // output result register
+    always@(posedge clock) begin
+		// reset
+        if(!resetn) begin
+            x <= 5'b0; 
+			y <= 8'b0;
+			colour <= 3'b0;
+        end
+		// erase
+/* 		else if(erase) begin
+			x <= `x_resting + x_add;
+			y <= y_add;
+			colour <= cyan;
+		end */
+		// draw
+		else begin
+		
+			// drawing the sprite
+			// body
+ 			if (y_add >= y0 && y_add < y0 + `height) begin
+			
+				/* MAKE SPRITE SINK INTO LAVA
+				if (y_add <= `lava_level && ground_under_sprite[`width - 1 - x_add]) begin
+					x  <= `x_resting + x_add;
+					y  <= y_add;
+					colour <= red;
+				end
+				*/
+			
+				if (x_add == 0 && y_add - y0 < 20) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(x_add > 9 && x_add < 15 && y_add - y0 == 16) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(y_add - y0 == 0) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(x_add == 19 && y_add - y0 < 20) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(y_add - y0 == 19) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				// eyes
+				end else if(x_add == 9 && y_add - y0 > 5 && y_add - y0 < 11) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(x_add == 15 && y_add - y0 > 5 && y_add - y0 < 11) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				// mouth
+				// bottom
+				end else if(x_add > 9 && x_add < 15 && y_add - y0 == 16) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				// sides
+				end else if(x_add == 9 && y_add - y0 > 13 && y_add - y0 < 16 && y0 <= `y_resting) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(x_add == 15 && y_add - y0 > 13 && y_add - y0 < 16 && y0 <= `y_resting) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				// top
+				end else if(x_add > 9 && x_add < 15 && y_add - y0 == 14 && y0 < `y_resting) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				// legs
+				end else if(x_add == 7 && y_add - y0 > 19 && y_add - y0 <= 30 && run_toggle == 1'b0) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(x_add == 13 && y_add - y0 > 19 && y_add - y0 <= 25 && run_toggle == 1'b0) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(x_add == 13 && y_add - y0 > 26 && run_toggle == 1'b0) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= cyan;
+				end else if(x_add == 7 && y_add - y0 > 19 && y_add - y0 <= 25 && run_toggle == 1'b1) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+				end else if(x_add == 7 && y_add - y0 > 26 && run_toggle == 1'b1) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= cyan;
+				end else if(x_add == 13 && y_add - y0 > 19 && y_add - y0 <= 30 && run_toggle == 1'b1) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= black;
+//				// sky
+				end else if(x_add < 10 && y_add - y0 > 19) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= cyan;
+				end else if(x_add > 7 && x_add < 13 && y_add - y0 > 19) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= cyan;
+				end else if(x_add > 13 && y_add - y0 > 19) begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= cyan;
+				end else begin
+					x <= `x_resting + x_add;
+					y <= y_add;
+					colour <= white;
+				end
+			end			
+			
+			// drawing the ground if y_add >= ground_level
+			else if (y_add >= `ground_level) begin
+				if (ground_under_sprite[`width - 1 - x_add] == 1'b0) begin
+					if (y_add <= `grass_level) begin
+						x <= `x_resting + x_add;
+						y <= y_add;
+						colour <= green;
+					end else begin
+						x <= `x_resting + x_add;
+						y <= y_add;
+						colour <= black;
+					end
+				end else if (ground_under_sprite[`width - 1 - x_add] == 1'b1) begin
+					if (y_add <= `lava_level) begin
+						x <= `x_resting + x_add;
+						y <= y_add;
+						colour <= cyan;
+					end
+					else begin
+						x <= `x_resting + x_add;
+						y <= y_add;
+						colour <= red;
+					end
+				end
+			end
+			
+			// if not below ground level and not in sprite, draw sky
+			else begin
+				x <= `x_resting + x_add;
+				y <= y_add;
+				colour <= cyan;
+			end
+			
+			
+			
+		end // end erase else
+    end // end counter
+	
+	assign y_add_out = y_add;
+
+endmodule
